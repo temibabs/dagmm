@@ -1,7 +1,9 @@
 import os
 import argparse
+import sys
+
 from solver import Solver
-from data_loader import get_loader
+from data_loader import get_dataset
 from torch.backends import cudnn
 from utils import *
 
@@ -16,10 +18,11 @@ def main(config):
     mkdir(config.log_path)
     mkdir(config.model_save_path)
 
-    data_loader = get_loader(config.data_path, batch_size=config.batch_size, mode=config.mode)
-    
+    dataset = get_dataset(config.data_path,
+                          batch_size=config.batch_size,
+                          mode=config.mode)
     # Solver
-    solver = Solver(data_loader, vars(config))
+    solver = Solver(dataset, vars(config))
 
     if config.mode == 'train':
         solver.train()

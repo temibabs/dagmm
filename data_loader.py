@@ -1,4 +1,7 @@
+import sys
+
 import torch
+import tensorflow as tf
 import os
 import random
 from torch.utils.data import Dataset
@@ -62,16 +65,22 @@ class KDD99Loader(object):
            return np.float32(self.test[index]), np.float32(self.test_labels[index])
         
 
-def get_loader(data_path, batch_size, mode='train'):
+def get_dataset(data_path, batch_size, mode='train'):
     """Build and return data loader."""
-
     dataset = KDD99Loader(data_path, mode)
 
     shuffle = False
     if mode == 'train':
         shuffle = True
 
-    data_loader = DataLoader(dataset=dataset,
-                             batch_size=batch_size,
-                             shuffle=shuffle)
-    return data_loader
+    print("Train Data size: {}".format(dataset.train.shape))
+    print("Test Data size: {}".format(dataset.test.shape))
+
+    if mode == 'train':
+        train_data = tf.data.Dataset.from_tensor_slices(dataset.train)
+        train_data = train_data.shuffle(dataset.train.shape[0])
+        return train_data.batch(batch_size)
+
+    else:
+        test_data = tf.data.Dataset.from_tensor_slices(dataset.test)
+        return test_data.batch(batch_size)

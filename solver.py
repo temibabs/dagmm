@@ -1,12 +1,13 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import sys
+
 import numpy as np
 import os
 import time
 import datetime
-from torch.autograd import grad
-from torch.autograd import Variable
+
+from tensorflow.python.keras.losses import Loss
+
+from loss import DAGMMLoss
 from model import *
 import matplotlib.pyplot as plt
 from utils import *
@@ -16,13 +17,14 @@ from tqdm import tqdm
 
 class Solver(object):
     DEFAULTS = {}   
-    def __init__(self, data_loader, config):
+    def __init__(self, data, config):
         # Data loader
         self.__dict__.update(Solver.DEFAULTS, **config)
-        self.data_loader = data_loader
+        self.data = data
 
         # Build tensorboard if use
         self.build_model()
+
         if self.use_tensorboard:
             self.build_tensorboard()
 
@@ -32,16 +34,15 @@ class Solver(object):
 
     def build_model(self):
         # Define model
-        self.dagmm = DaGMM(self.gmm_k)
+        self.dagmm = DAGMM(self.gmm_k)
+        loss_object = DAGMMLoss()
 
+        self.dagmm.build(tf.shape(self.data))
         # Optimizers
-        self.optimizer = torch.optim.Adam(self.dagmm.parameters(), lr=self.lr)
+        self.optimizer = tf.optimizers.Adam(learning_rate=self.lr)
+        self.dagmm.summary()
 
-        # Print networks
-        self.print_network(self.dagmm, 'DaGMM')
-
-        if torch.cuda.is_available():
-            self.dagmm.cuda()
+        #if tf.test.is_gpu_available and tf.test.is_built_with_cuda:
 
     def print_network(self, model, name):
         num_params = 0
@@ -72,7 +73,8 @@ class Solver(object):
         return Variable(x, volatile=volatile)
 
     def train(self):
-        iters_per_epoch = len(self.data_loader)
+        print(self.data.shape())
+        # iters_per_epoch = len(self.data)
 
         # Start with trained model if exists
         if self.pretrained_model:
@@ -84,11 +86,9 @@ class Solver(object):
         iter_ctr = 0
         start_time = time.time()
 
-
-
         self.ap_global_train = np.array([0,0,0])
         for e in range(start, self.num_epochs):
-            for i, (input_data, labels) in enumerate(tqdm(self.data_loader)):
+            for i, (input_data, labels) in enumerate(tqdm(self.data)):
                 iter_ctr += 1
                 start = time.time()
 
@@ -174,14 +174,14 @@ class Solver(object):
     def test(self):
         print("======================TEST MODE======================")
         self.dagmm.eval()
-        self.data_loader.dataset.mode="train"
+        self.data.dataset.mode = "train"
 
         N = 0
         mu_sum = 0
         cov_sum = 0
         gamma_sum = 0
 
-        for it, (input_data, labels) in enumerate(self.data_loader):
+        for it, (input_data, labels) in enumerate(self.data):
             input_data = self.to_var(input_data)
             enc, dec, z, gamma = self.dagmm(input_data)
             phi, mu, cov = self.dagmm.compute_gmm_params(z, gamma)
@@ -206,7 +206,7 @@ class Solver(object):
         train_energy = []
         train_labels = []
         train_z = []
-        for it, (input_data, labels) in enumerate(self.data_loader):
+        for it, (input_data, labels) in enumerate(self.data):
             input_data = self.to_var(input_data)
             enc, dec, z, gamma = self.dagmm(input_data)
             sample_energy, cov_diag = self.dagmm.compute_energy(z, phi=train_phi, mu=train_mu, cov=train_cov, size_average=False)
@@ -221,11 +221,11 @@ class Solver(object):
         train_labels = np.concatenate(train_labels,axis=0)
 
 
-        self.data_loader.dataset.mode="test"
+        self.data.dataset.mode= "test"
         test_energy = []
         test_labels = []
         test_z = []
-        for it, (input_data, labels) in enumerate(self.data_loader):
+        for it, (input_data, labels) in enumerate(self.data):
             input_data = self.to_var(input_data)
             enc, dec, z, gamma = self.dagmm(input_data)
             sample_energy, cov_diag = self.dagmm.compute_energy(z, size_average=False)
