@@ -44,6 +44,7 @@ if __name__ == '__main__':
     parser.add_argument('--lambda_energy', type=float, default=0.1)
     parser.add_argument('--lambda_cov_diag', type=float, default=0.005)
     parser.add_argument('--pretrained_model', type=str, default=None)
+    parser.add_argument('--enc_num', type=int, default=5)
 
     # Misc
     parser.add_argument('--mode', type=str, default='train', choices=['train', 'test'])

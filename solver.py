@@ -34,23 +34,15 @@ class Solver(object):
 
     def build_model(self):
         # Define model
-        self.dagmm = DAGMM(self.gmm_k)
-        loss_object = DAGMMLoss()
-
-        self.dagmm.build(tf.shape(self.data))
+        self.dagmm = DAGMM(118 ,self.enc_num)
+        self.loss_function = DAGMMLoss()
         # Optimizers
         self.optimizer = tf.optimizers.Adam(learning_rate=self.lr)
-        self.dagmm.summary()
-
-        #if tf.test.is_gpu_available and tf.test.is_built_with_cuda:
-
-    def print_network(self, model, name):
-        num_params = 0
-        for p in model.parameters():
-            num_params += p.numel()
-        print(name)
-        print(model)
-        print("The number of parameters: {}".format(num_params))
+        self.dagmm.compile(
+            optimizer=self.optimizer,
+            loss=self.loss_function,
+            metrics=None
+        )
 
     def load_pretrained_model(self):
         self.dagmm.load_state_dict(torch.load(os.path.join(
@@ -67,15 +59,7 @@ class Solver(object):
     def reset_grad(self):
         self.dagmm.zero_grad()
 
-    def to_var(self, x, volatile=False):
-        if torch.cuda.is_available():
-            x = x.cuda()
-        return Variable(x, volatile=volatile)
-
     def train(self):
-        print(self.data.shape())
-        # iters_per_epoch = len(self.data)
-
         # Start with trained model if exists
         if self.pretrained_model:
             start = int(self.pretrained_model.split('_')[0])
@@ -86,80 +70,20 @@ class Solver(object):
         iter_ctr = 0
         start_time = time.time()
 
-        self.ap_global_train = np.array([0,0,0])
-        for e in range(start, self.num_epochs):
-            for i, (input_data, labels) in enumerate(tqdm(self.data)):
-                iter_ctr += 1
+        #self.dagmm.fit(self.data, batch_size=self.batch_size)
+        for epoch in range(start, self.num_epochs):
+            for batch in self.data:
                 start = time.time()
-
-                input_data = self.to_var(input_data)
-
-                total_loss,sample_energy, recon_error, cov_diag = self.dagmm_step(input_data)
-                # Logging
-                loss = {}
-                loss['total_loss'] = total_loss.data.item()
-                loss['sample_energy'] = sample_energy.item()
-                loss['recon_error'] = recon_error.item()
-                loss['cov_diag'] = cov_diag.item()
-
-
-
-                # Print out log info
-                if (i+1) % self.log_step == 0:
-                    elapsed = time.time() - start_time
-                    total_time = ((self.num_epochs*iters_per_epoch)-(e*iters_per_epoch+i)) * elapsed/(e*iters_per_epoch+i+1)
-                    epoch_time = (iters_per_epoch-i)* elapsed/(e*iters_per_epoch+i+1)
-                    
-                    epoch_time = str(datetime.timedelta(seconds=epoch_time))
-                    total_time = str(datetime.timedelta(seconds=total_time))
-                    elapsed = str(datetime.timedelta(seconds=elapsed))
-
-                    lr_tmp = []
-                    for param_group in self.optimizer.param_groups:
-                        lr_tmp.append(param_group['lr'])
-                    tmplr = np.squeeze(np.array(lr_tmp))
-
-                    log = "Elapsed {}/{} -- {} , Epoch [{}/{}], Iter [{}/{}], lr {}".format(
-                        elapsed,epoch_time,total_time, e+1, self.num_epochs, i+1, iters_per_epoch, tmplr)
-
-                    for tag, value in loss.items():
-                        log += ", {}: {:.4f}".format(tag, value)
-
-                    IPython.display.clear_output()
-                    print(log)
-
-                    if self.use_tensorboard:
-                        for tag, value in loss.items():
-                            self.logger.scalar_summary(tag, value, e * iters_per_epoch + i + 1)
-                    else:
-                        plt_ctr = 1
-                        if not hasattr(self,"loss_logs"):
-                            self.loss_logs = {}
-                            for loss_key in loss:
-                                self.loss_logs[loss_key] = [loss[loss_key]]
-                                plt.subplot(2,2,plt_ctr)
-                                plt.plot(np.array(self.loss_logs[loss_key]), label=loss_key)
-                                plt.legend()
-                                plt_ctr += 1
-                        else:
-                            for loss_key in loss:
-                                self.loss_logs[loss_key].append(loss[loss_key])
-                                plt.subplot(2,2,plt_ctr)
-                                plt.plot(np.array(self.loss_logs[loss_key]), label=loss_key)
-                                plt.legend()
-                                plt_ctr += 1
-
-                        plt.show()
-
-                    print("phi", self.dagmm.phi,"mu",self.dagmm.mu, "cov",self.dagmm.cov)
-                # Save model checkpoints
-                if (i+1) % self.model_save_step == 0:
-                    torch.save(self.dagmm.state_dict(),
-                        os.path.join(self.model_save_path, '{}_{}_dagmm.pth'.format(e+1, i+1)))
+                total_loss, sample_energy, recon_error, cov_diag = self.dagmm_step(batch)
 
     def dagmm_step(self, input_data):
-        self.dagmm.train()
-        enc, dec, z, gamma = self.dagmm(input_data)
+        z, dec, gamma = self.dagmm(input_data, training=True)
+        print("z: {}".format(z.shape))
+        print("dec: {}".format(dec.shape))
+        print("gamma: {}".format(gamma.shape))
+        self.loss_function.stage_loss(z, gamma)
+        total_loss = self.loss_function(input_data, dec)
+        print(total_loss)
 
         total_loss, sample_energy, recon_error, cov_diag = self.dagmm.loss_function(input_data, dec, z, gamma, self.lambda_energy, self.lambda_cov_diag)
 
