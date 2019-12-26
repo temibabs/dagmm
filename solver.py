@@ -77,15 +77,19 @@ class Solver(object):
                 total_loss, sample_energy, recon_error, cov_diag = self.dagmm_step(batch)
 
     def dagmm_step(self, input_data):
-        z, dec, gamma = self.dagmm(input_data, training=True)
-        print("z: {}".format(z.shape))
-        print("dec: {}".format(dec.shape))
-        print("gamma: {}".format(gamma.shape))
-        self.loss_function.stage_loss(z, gamma)
+
+        # Run input data against the model
+        model_output = self.dagmm(input_data, training=True)
+
+        # Extract model output
+        z, dec = model_output['z'], model_output['dec']
+        gamma, sample_energy = model_output['gamma'], model_output['energy']
+        cov, cov_diag = model_output['cov'], model_output['cov_diag']
+
+        # Compute losses
+        self.loss_function.stage_loss(z, gamma, sample_energy, cov, cov_diag)
         total_loss = self.loss_function(input_data, dec)
         print(total_loss)
-
-        total_loss, sample_energy, recon_error, cov_diag = self.dagmm.loss_function(input_data, dec, z, gamma, self.lambda_energy, self.lambda_cov_diag)
 
         self.reset_grad()
         total_loss.backward()
