@@ -19,7 +19,7 @@ My Implementation (only one run) : Precision : 0.9677, Recall : 0.9538, F-score 
 Below are code snippets of the two main components of the model. More specifically, computing the gmm parameters and sample energy.
 
 ```python
-            def compute_parameters(self, z, gamma):
+    def compute_parameters(self, z, gamma):
         N = gamma.shape[0]
         sum_gamma = tf.reduce_sum(gamma, axis=0)
         self.phi = sum_gamma / N
@@ -42,7 +42,7 @@ I added some epsilon on the diagonals of the covariance matrix, otherwise I get 
 I tried using `torch.potrf(cov_k).diag().prod()**2` to compute for the determinants, but for some reason I get errors after several epochs, so I used numpy's linalg to compute for the determinants instead.
 
 ```python
-        def compute_sample_energy(self):
+    def compute_sample_energy(self):
         k, D, _ = self.cov.shape
         z_mu = tf.expand_dims(self.zc, axis=1) - tf.expand_dims(self.mu, axis=0)
 
